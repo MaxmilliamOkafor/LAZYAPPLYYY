@@ -93,6 +93,18 @@
     },
     {
       "matches": [
+        "https://app.lazyapply.com/*",
+        "https://beta.lazyapply.com/*",
+        "https://dev--lazyapply-extension-dashboard.netlify.app/*"
+      ],
+      "js": [
+        "./search-boost.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
         "*://x.com/*"
       ],
       "js": [
