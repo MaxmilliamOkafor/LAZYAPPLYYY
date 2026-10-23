@@ -40,6 +40,22 @@ let CUSTOM_UA = DEFAULT_UA;
 //   console.log("Going...");
 // }
 let timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// chrome.tabs.remove throws synchronously for a missing/NaN tab id, which used to
+// skip the callback (and the "completed"/"unauthorized" messages) entirely.
+function safeRemoveTab(tabId, callback) {
+  const id = parseInt(tabId);
+  const done = () => {
+    void chrome.runtime.lastError;
+    if (callback) callback();
+  };
+  if (!Number.isInteger(id) || id < 0) return done();
+  try {
+    chrome.tabs.remove(id, done);
+  } catch (e) {
+    done();
+  }
+}
 /**
  * Retrieve object from Chrome's Local StorageArea
  * @param {{string or array of string keys}} keys
@@ -624,7 +640,7 @@ async function updateUrl(link, message2) {
   getObjectFromLocalStorage(["globalTabId", "indeedTabId"]).then(
     (storageResult) => {
       if (link == "index.html") {
-        chrome.tabs.remove(parseInt(storageResult.indeedTabId), function () {
+        safeRemoveTab(storageResult.indeedTabId, function () {
           console.log("Finally Completed");
           if (message2 == "unauthorized") {
             if (storageResult.globalTabId)
@@ -655,7 +671,7 @@ async function updateUrl(link, message2) {
 
 function updateUrlDebug(link, debugTabId, message, platform) {
   if (link == "index.html") {
-    chrome.tabs.remove(parseInt(debugTabId), function () {
+    safeRemoveTab(debugTabId, function () {
       resetVariables();
       globalReset();
       chrome.runtime.sendMessage({ [platform]: true, message });
@@ -802,10 +818,10 @@ const allUrls = [
   "https://*.icims.com/jobs/*/*/candidate*",
   "https://*.icims.com/jobs/*/*/questions*",
   "https://login.icims.com/u/login/password*",
-  "https://*.wd5.myworkdayjobs.com/en-US/*/job/*",
-  "https://*.wd5.myworkdayjobs.com/en-US/*/login*",
-  "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/apply/autofillWithResume",
-  "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/*/apply/autofillWithResume",
+  "https://*.myworkdayjobs.com/*/job/*",
+  "https://*.myworkdayjobs.com/*/login*",
+  "https://*.myworkdayjobs.com/*/job/*/apply/autofillWithResume",
+  "https://*.myworkdayjobs.com/*/job/*/*/apply/autofillWithResume",
   // "https://recruitcrm.io/apply/*/*",
   // "*://www.linkedin.com/jobs/view/*",
   // // "*://in.indeed.com/viewjob*",
@@ -926,17 +942,23 @@ function processUrl(url, tabId) {
   }
 }
 
-let timeoutCheckInterval = null;
+const TIMEOUT_ALARM_NAME = "jobTimeoutCheck";
 
+// MV3 service workers are suspended after ~30s idle, which silently killed the old
+// setInterval watchdog and left automation stuck on a job. Alarms survive restarts.
 function startTimeoutMonitoring() {
-  // Clear any existing interval first
   stopTimeoutMonitoring();
 
   console.log("Starting timeout monitoring...");
 
-  // Check every 1 minutes (60000 milliseconds)
+  chrome.alarms.create(TIMEOUT_ALARM_NAME, { periodInMinutes: 1 });
+}
 
-  timeoutCheckInterval = setInterval(async () => {
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === TIMEOUT_ALARM_NAME) checkJobTimeout();
+});
+
+async function checkJobTimeout() {
     try {
       // Get current timeout info
       const timeoutInfo = await chrome.storage.local.get("jobTimeoutSet");
@@ -956,7 +978,10 @@ function startTimeoutMonitoring() {
         const state = await chrome.storage.local.get("applicationState");
 
         // Make sure we're still on the same job
-        if (state?.applicationState?.currentIndex === jobIndex) {
+        if (
+          state?.applicationState?.links &&
+          state.applicationState.currentIndex === jobIndex
+        ) {
           // Get the tab ID
           const tabState = await chrome.storage.local.get("automationTabId");
 
@@ -1028,15 +1053,11 @@ function startTimeoutMonitoring() {
     } catch (error) {
       console.error("Error in timeout monitoring:", error);
     }
-  }, 60000); // Check every 1 minutes
 }
 
 function stopTimeoutMonitoring() {
-  if (timeoutCheckInterval) {
-    console.log("Stopping timeout monitoring...");
-    clearInterval(timeoutCheckInterval);
-    timeoutCheckInterval = null;
-  }
+  console.log("Stopping timeout monitoring...");
+  chrome.alarms.clear(TIMEOUT_ALARM_NAME);
 }
 
 function isUrlInAllowedPatterns(url) {
@@ -1061,10 +1082,10 @@ function isUrlInAllowedPatterns(url) {
     "https://*.icims.com/jobs/*/*/candidate*",
     "https://*.icims.com/jobs/*/*/questions*",
     "https://login.icims.com/u/login/password*",
-    "https://*.wd5.myworkdayjobs.com/en-US/*/job/*",
-    "https://*.wd5.myworkdayjobs.com/en-US/*/login*",
-    "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/apply/autofillWithResume",
-    "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/*/apply/autofillWithResume",
+    "https://*.myworkdayjobs.com/*/job/*",
+    "https://*.myworkdayjobs.com/*/login*",
+    "https://*.myworkdayjobs.com/*/job/*/apply/autofillWithResume",
+    "https://*.myworkdayjobs.com/*/job/*/*/apply/autofillWithResume",
     "https://*.indeed.com/*",
     "https://*.simplyhired.com/*",
     "https://*.linkedin.com/jobs/*",
@@ -1478,7 +1499,7 @@ async function addDebugScript(fnName) {
 async function linkedinUpdateUrl(link, message2) {
   getObjectFromLocalStorage(["linkedinTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.linkedinTabId), function () {
+      safeRemoveTab(storageResult.linkedinTabId, function () {
         console.log("Finally Completed");
         //chrome.runtime.sendMessage({ linkedin: "true", message: "completed" ,message2 : message2});
       });
@@ -1512,7 +1533,7 @@ function updateUrlAtTabId(link, tabID) {
 function glassdoorUpdateUrl2(link) {
   getObjectFromLocalStorage(["glassdoorTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.glassdoorTabId), function () {
+      safeRemoveTab(storageResult.glassdoorTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1534,7 +1555,7 @@ function glassdoorUpdateUrl2(link) {
 function seekUpdateUrl2(link) {
   getObjectFromLocalStorage(["seekTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.seekTabId), function () {
+      safeRemoveTab(storageResult.seekTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1581,7 +1602,7 @@ function careerBuilderUpdateUrl2(link) {
 function monsterUpdateUrl2(link) {
   getObjectFromLocalStorage(["monsterTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.monsterTabId), function () {
+      safeRemoveTab(storageResult.monsterTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1603,7 +1624,7 @@ function monsterUpdateUrl2(link) {
 function founditUpdateUrl2(link) {
   getObjectFromLocalStorage(["founditTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.founditTabId), function () {
+      safeRemoveTab(storageResult.founditTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1625,7 +1646,7 @@ function founditUpdateUrl2(link) {
 function simplyHiredUpdateUrl2(link) {
   getObjectFromLocalStorage(["simplyHiredTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.simplyHiredTabId), function () {
+      safeRemoveTab(storageResult.simplyHiredTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1674,7 +1695,7 @@ function glassdoorUpdateUrl(pageNumber) {
 async function diceUpdateUrl(link, message2) {
   getObjectFromLocalStorage(["diceTabId"]).then((storageResult) => {
     if (link == "index.html") {
-      chrome.tabs.remove(parseInt(storageResult.diceTabId), function () {
+      safeRemoveTab(storageResult.diceTabId, function () {
         console.log("Finally Completed");
       });
     } else {
@@ -1904,14 +1925,14 @@ async function handleAutomationComplete(tabId) {
     "applicationState",
     "globalTabId",
   ]); // Get the stored tab ID
-  const { links } = state.applicationState;
+  const links = state.applicationState?.links || [];
 
   const results = {
     type: "AUTOMATION_RESULTS",
     data: {
       status: "completed",
       processedLinks: links.filter((link) => link.status === "completed"),
-      failedLinks: state.applicationState.failedLinks || [],
+      failedLinks: state.applicationState?.failedLinks || [],
       stoppedAt: null,
       totalLinks: links.length,
     },
@@ -1919,9 +1940,11 @@ async function handleAutomationComplete(tabId) {
 
   // Send results to React app using chrome.tabs.sendMessage
 
-  if (state.globalTabId) {
+  if (!state.globalTabId) {
+    await chrome.storage.local.set({ lastAutomationResults: results });
+  } else {
     try {
-      chrome.tabs.sendMessage(Number(state.globalTabId), results);
+      await chrome.tabs.sendMessage(Number(state.globalTabId), results);
       await chrome.tabs.update(Number(state.globalTabId), {
         active: true,
       });
@@ -1933,14 +1956,9 @@ async function handleAutomationComplete(tabId) {
     }
   }
 
-  chrome.tabs.remove(tabId, () => {
-    if (chrome.runtime.lastError) {
-      console.error("Error closing tab:", chrome.runtime.lastError.message);
-    } else {
-      console.log("Tab closed successfully.");
-    }
-  });
+  safeRemoveTab(tabId);
   indeedSmartApplyTabs = [];
+  saveSmartApplyTabs();
   await chrome.storage.local.remove([
     "applicationState",
     "automationControlView",
@@ -2047,7 +2065,7 @@ const JOB_BOARDS = {
     urlPattern: "icims.com",
   },
   workday: {
-    urlPattern: "wd5.myworkdayjobs.com",
+    urlPattern: "myworkdayjobs.com",
   },
   wellfound: {
     urlPattern: "wellfound.com",
@@ -2106,12 +2124,27 @@ function detectJobBoard(url) {
 }
 
 let indeedSmartApplyTabs = [];
+// Kept in session storage so the list survives service-worker restarts.
+const smartApplyTabsReady = chrome.storage.session
+  .get("indeedSmartApplyTabs")
+  .then((result) => {
+    if (Array.isArray(result?.indeedSmartApplyTabs))
+      indeedSmartApplyTabs = result.indeedSmartApplyTabs;
+  })
+  .catch(() => {});
+const saveSmartApplyTabs = () => {
+  indeedSmartApplyTabs = indeedSmartApplyTabs.slice(-100);
+  chrome.storage.session.set({ indeedSmartApplyTabs }).catch(() => {});
+};
 chrome.tabs.onCreated.addListener(async (newTab) => {
-  if (newTab.openerTabId && newTab.id)
+  if (newTab.openerTabId && newTab.id) {
+    await smartApplyTabsReady;
     indeedSmartApplyTabs.push({
       id: newTab.id,
       openerTabId: newTab.openerTabId,
     });
+    saveSmartApplyTabs();
+  }
 });
 
 chrome.runtime.onMessageExternal.addListener(function (
@@ -3264,10 +3297,13 @@ let applycall1 = 0;
 let applycall3 = 0;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === "GET_CURRENT_TAB") {
-    sendResponse({
-      tabId: sender.tab.id,
-      indeedSmartApplyTabs: indeedSmartApplyTabs,
-    });
+    smartApplyTabsReady.then(() =>
+      sendResponse({
+        tabId: sender.tab?.id,
+        indeedSmartApplyTabs: indeedSmartApplyTabs,
+      })
+    );
+    return true;
   }
 
   if (request.type === "OPEN_NEXT_LINK") {
@@ -3559,7 +3595,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type == "AUTOMATION_CONTROL_INJECT") {
     (async () => {
       try {
-        const currentTabId = sender.tab.id;
+        await smartApplyTabsReady;
+        const currentTabId = sender.tab?.id;
         const checkIfCurrentTabIdIsOpenedFromAutomationTabId = () => {
           return indeedSmartApplyTabs.some(
             (tab) =>
@@ -3993,6 +4030,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.message == "Script_Finished") {
       console.log("hello there");
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (!tabs?.[0]) return;
         chrome.tabs.sendMessage(tabs[0].id, {
           autoFill: true,
           message: "Script has finished",
@@ -4306,7 +4344,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if ("message2" in request && request.message2 == "quitclicked") {
         console.log("quit");
         getObjectFromLocalStorage(["diceTabId"]).then((storageResult) => {
-          chrome.tabs.remove(parseInt(storageResult.diceTabId), function () {
+          safeRemoveTab(storageResult.diceTabId, function () {
             console.log("Finally closed tab zip");
           });
         });
@@ -4992,10 +5030,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             await saveObjectInLocalStorage(sampleObject);
             console.log("saved now", tabId, previousTabId);
             // saved, now remove
-            if (previousTabId !== tabId)
-              chrome.tabs.remove(parseInt(previousTabId));
-            if (previousTabId !== tabId)
-              chrome.tabs.remove(parseInt(previousTabId));
+            if (previousTabId !== tabId) safeRemoveTab(previousTabId);
             sendResponse({ message: "Save New Tab Id" });
           }
         );
@@ -5004,11 +5039,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       return true;
     } else if (request.message == "m5TabOpened") {
+      let intervalAttempts = 0;
       let intervalId = setInterval(() => {
+        // give up after ~60s instead of polling forever
+        if (++intervalAttempts > 60) return clearInterval(intervalId);
         getObjectFromLocalStorage(["glassdoorTabId"]).then((storageResult) => {
           chrome.tabs.query(
             { active: true, currentWindow: true },
             function (tabs) {
+              if (!tabs?.[0]) return;
               console.log(
                 "comparing current tab with glassdoortab",
                 storageResult.glassdoorTabId,
@@ -5420,11 +5459,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
     } else if (request.message == "m5TabOpened") {
+      let intervalAttempts = 0;
       let intervalId = setInterval(() => {
+        // give up after ~60s instead of polling forever
+        if (++intervalAttempts > 60) return clearInterval(intervalId);
         getObjectFromLocalStorage(["seekTabId"]).then((storageResult) => {
           chrome.tabs.query(
             { active: true, currentWindow: true },
             function (tabs) {
+              if (!tabs?.[0]) return;
               console.log(
                 "comparing current tab with seektab",
                 storageResult.seekTabId,
@@ -5491,7 +5534,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if ("message2" in request && request.message2 == "quitclicked") {
         getObjectFromLocalStorage(["seekTabId"]).then((storageResult) => {
           console.log("quit");
-          chrome.tabs.remove(parseInt(storageResult.seekTabId), function () {
+          safeRemoveTab(storageResult.seekTabId, function () {
             console.log("Finally closed tab zip");
           });
         });
@@ -6235,7 +6278,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if ("message2" in request && request.message2 == "quitclicked") {
         getObjectFromLocalStorage(["monsterTabId"]).then((storageResult) => {
           console.log("quit");
-          chrome.tabs.remove(parseInt(storageResult.monsterTabId), function () {
+          safeRemoveTab(storageResult.monsterTabId, function () {
             console.log("Finally closed tab zip");
           });
         });
@@ -6554,7 +6597,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if ("message2" in request && request.message2 == "quitclicked") {
         getObjectFromLocalStorage(["founditTabId"]).then((storageResult) => {
           console.log("quit");
-          chrome.tabs.remove(parseInt(storageResult.founditTabId), function () {
+          safeRemoveTab(storageResult.founditTabId, function () {
             console.log("Finally closed tab zip");
           });
         });
@@ -7725,7 +7768,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if ("message2" in request && request.message2 == "quitclicked") {
         console.log("quit");
         getObjectFromLocalStorage(["indeedTabId"]).then((storageResult) => {
-          chrome.tabs.remove(parseInt(storageResult.indeedTabId), function () {
+          safeRemoveTab(storageResult.indeedTabId, function () {
             console.log("Finally closed tab zip");
           });
         });

@@ -1,8 +1,6 @@
 {
-"update_url": "https://clients2.google.com/service/update2/crx",
-
   "name": "LazyApply : Job Application Bot",
-  "description": "Apply to 100’s of jobs in just one click… Automate your application for Job with the lifetime job application system LazyApply.",
+  "description": "Apply to 100\u2019s of jobs in just one click\u2026 Automate your application for Job with the lifetime job application system LazyApply.",
   "version": "0.8.94",
   "manifest_version": 3,
   "icons": {
@@ -81,10 +79,10 @@
         "https://*.icims.com/jobs/*/*/candidate*",
         "https://*.icims.com/jobs/*/*/questions*",
         "https://login.icims.com/u/login/password*",
-        "https://*.wd5.myworkdayjobs.com/en-US/*/job/*",
-        "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/apply/autofillWithResume",
-        "https://*.wd5.myworkdayjobs.com/en-US/*/job/*/*/apply/autofillWithResume",
-        "https://*.wd5.myworkdayjobs.com/en-US/*/login*",
+        "https://*.myworkdayjobs.com/*/job/*",
+        "https://*.myworkdayjobs.com/*/job/*/apply/autofillWithResume",
+        "https://*.myworkdayjobs.com/*/job/*/*/apply/autofillWithResume",
+        "https://*.myworkdayjobs.com/*/login*",
         "https://wellfound.com/jobs/*"
       ],
       "js": [
@@ -94,9 +92,13 @@
       ]
     },
     {
-      "matches": ["*://x.com/*"],
-      "js": ["./twitterTemplate.bundle.js"]
-    }, 
+      "matches": [
+        "*://x.com/*"
+      ],
+      "js": [
+        "./twitterTemplate.bundle.js"
+      ]
+    },
     {
       "matches": [
         "https://*.indeed.com/*"
@@ -620,7 +622,8 @@
     "unlimitedStorage",
     "tabs",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "alarms"
   ],
   "host_permissions": [
     "https://*.indeed.com/*",
@@ -666,7 +669,7 @@
     "https://wellfound.com/*",
     "https://*.icims.com/*",
     "https://login.icims.com/*",
-    "https://*.wd5.myworkdayjobs.com/*",
+    "https://*.myworkdayjobs.com/*",
     "https://*.amazonaws.com/*",
     "https://*.s3.amazonaws.com/*",
     "https://*.cloudfront.net/*",
@@ -729,7 +732,7 @@
         "https://wellfound.com/*",
         "https://*.icims.com/*",
         "https://login.icims.com/*",
-        "https://*.wd5.myworkdayjobs.com/*"
+        "https://*.myworkdayjobs.com/*"
       ]
     },
     {
@@ -780,13 +783,13 @@
         "https://wellfound.com/*",
         "https://*.icims.com/*",
         "https://login.icims.com/*",
-        "https://*.wd5.myworkdayjobs.com/*"
+        "https://*.myworkdayjobs.com/*"
       ],
       "use_dynamic_url": true
     },
     {
       "resources": [
-        "styles.css"
+        "styles/styles.css"
       ],
       "matches": [
         "https://*.indeed.com/*",
@@ -832,7 +835,7 @@
         "https://wellfound.com/*",
         "https://*.icims.com/*",
         "https://login.icims.com/*",
-        "https://*.wd5.myworkdayjobs.com/*"
+        "https://*.myworkdayjobs.com/*"
       ]
     }
   ]
