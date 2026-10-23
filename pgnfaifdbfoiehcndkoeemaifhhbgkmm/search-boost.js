@@ -43,7 +43,7 @@
     var st = sessions[sid];
     var dashboardPage = Number(body.page) || 0;
     /* first = the dashboard's first batch number, so a wider window restarts there */
-    if (!st) st = sessions[sid] = { tier: startTier(body.timeFilter), pageOffset: 0, first: dashboardPage };
+    if (!st) st = sessions[sid] = { tier: startTier(body.timeFilter), pageOffset: 0, first: firstPage(body) };
     var res, json;
     for (;;) {
       var payload = Object.assign({}, body, { includeWorkdayIcimsJobs: true });
@@ -64,6 +64,11 @@
       st.pageOffset = dashboardPage - st.first;
       try { console.info('[LazyApply search] widened Date Posted to ' + WINDOWS[st.tier] + ' at batch ' + dashboardPage); } catch (_) {}
     }
+  }
+
+  /* The backend's first page number, as the dashboard numbers its batches. */
+  function firstPage(body) {
+    return body && body.page === 0 ? 0 : 1;
   }
 
   /* Hand a finished response to an XMLHttpRequest the page is waiting on. */
